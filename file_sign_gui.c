@@ -10,23 +10,58 @@ static char *public_key_path = "public.key";
 // Callback: Generate Keys
 void on_generate(GtkWidget *widget, gpointer data) {
     (void)widget;
-    lamport_keypair_t kp;
-    if (lamport_keygen(&kp) != 0) {
-        GtkWidget *err = gtk_message_dialog_new(GTK_WINDOW(data), GTK_DIALOG_MODAL,
-            GTK_MESSAGE_ERROR, GTK_BUTTONS_OK,
-            "Error: Key generation failed.");
-        gtk_dialog_run(GTK_DIALOG(err)); gtk_widget_destroy(err);
-        return;
+    GtkWidget *dialog = gtk_file_chooser_dialog_new("Save Private Key",
+        GTK_WINDOW(data), GTK_FILE_CHOOSER_ACTION_SAVE,
+        "_Cancel", GTK_RESPONSE_CANCEL,
+        "_Save", GTK_RESPONSE_ACCEPT,
+        NULL);
+    gtk_file_chooser_set_do_overwrite_confirmation(GTK_FILE_CHOOSER(dialog), TRUE);
+    gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(dialog), "private.key");
+
+    if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
+        char *priv_key_path = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+
+        // Derive public key path from private key path or ask separately
+        char pub_key_path[1024];
+        snprintf(pub_key_path, sizeof(pub_key_path), "%s.pub", priv_key_path);
+
+        lamport_keypair_t kp;
+        if (lamport_keygen(&kp) != 0) {
+            GtkWidget *err = gtk_message_dialog_new(GTK_WINDOW(data), GTK_DIALOG_MODAL,
+                GTK_MESSAGE_ERROR, GTK_BUTTONS_OK,
+                "Error: Key generation failed.");
+            gtk_dialog_run(GTK_DIALOG(err)); gtk_widget_destroy(err);
+            g_free(priv_key_path);
+            gtk_widget_destroy(dialog);
+            return;
+        }
+        if (save_keypair(priv_key_path, pub_key_path, &kp) != 0) {
+            GtkWidget *err = gtk_message_dialog_new(GTK_WINDOW(data), GTK_DIALOG_MODAL,
+                GTK_MESSAGE_ERROR, GTK_BUTTONS_OK,
+                "Error: Saving keys failed.");
+            gtk_dialog_run(GTK_DIALOG(err)); gtk_widget_destroy(err);
+            g_free(priv_key_path);
+            gtk_widget_destroy(dialog);
+            return;
+        }
+        GtkWidget *msg = gtk_message_dialog_new(GTK_WINDOW(data), GTK_DIALOG_MODAL,
+            GTK_MESSAGE_INFO, GTK_BUTTONS_OK,
+            "Keys generated and saved successfully!\nPrivate Key: %s\nPublic Key: %s",
+            priv_key_path, pub_key_path);
+        gtk_dialog_run(GTK_DIALOG(msg));
+        gtk_widget_destroy(msg);
+
+        // Update global paths if you want to reuse them later
+        g_free(private_key_path);
+        private_key_path = g_strdup(priv_key_path);
+        g_free(public_key_path);
+        public_key_path = g_strdup(pub_key_path);
+
+        g_free(priv_key_path);
     }
-    // Save keys
-    save_keypair(private_key_path, public_key_path, &kp);
-    GtkWidget *dialog = gtk_message_dialog_new(GTK_WINDOW(data), GTK_DIALOG_MODAL,
-        GTK_MESSAGE_INFO, GTK_BUTTONS_OK,
-        "Keys generated and saved successfully!\nPrivate Key: %s\nPublic Key: %s",
-        private_key_path, public_key_path);
-    gtk_dialog_run(GTK_DIALOG(dialog));
     gtk_widget_destroy(dialog);
 }
+
 
 // Callback: Sign File
 void on_sign(GtkWidget *widget, gpointer data) {
